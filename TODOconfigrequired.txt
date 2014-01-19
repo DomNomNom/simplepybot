@@ -1,0 +1,37 @@
+if no type specified it is string
+
+**** CommandBOt ****
+log_name
+log_level
+log_handlers  = [list of log handlers]
+db_file
+network
+port
+nick
+is_mute boolean
+is_running boolean
+registered boolean
+times reconnected = int
+max_reconnects = int
+
+**** For authentication ****
+module_name
+log_level
+log_handlers
+bootstrapped boolean
+
+
+**** For identity ****
+log_level
+log_handlers
+
+**** For network ****
+log_level
+log_handlers
+is_running boolean
+connected boolean
+buffer_size int
+
+**** For IRC wrapper ****
+log_level
+log_handlers

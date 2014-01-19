@@ -2,18 +2,22 @@ import sqlite3
 import logging
 
 class IdentAuth:
-    def __init__(self, bot, module_name='identauth', log_level = logging.INFO):
+    def __init__(self, bot, module_name='identauth', config):
+        self.config = config[module_name]#get our config
+        self.config.module_name = module_name
         self.bot = bot
-        self.log = logging.getLogger(bot.log_name+'.'+module_name)
-        self.log.setLevel(log_level)
+        self.log = logging.getLogger(self.config.module_name)
+        self.log.setLevel(self.config.log_level)
+        for handler in self.config.log_handlers:
+            self.log.addHandler(handler)
+
         self.db = bot.db
         self.irc = bot.irc
-        self.module_name = module_name
         #set up our db table
         c = self.db.cursor()
-        c.execute("CREATE TABLE IF NOT EXISTS {0} (name TEXT UNIQUE NOT NULL, level INTEGER NOT NULL)".format(self.module_name))
+        c.execute("CREATE TABLE IF NOT EXISTS {0} (name TEXT UNIQUE NOT NULL, level INTEGER NOT NULL)".format(self.config.module_name))
         self.db.commit()
-        self.bot.add_module(module_name, self)
+        self.bot.add_module(self.config.module_name, self)
         self.commands = [
                 bot.command(r'!add user (?P<nickhost>\S+) (?P<level>\d+)', self.add_user_c, auth_level=20),
                 bot.command(r'!update user (?P<nickhost>\S+) (?P<level>\d+)', self.update_user_c, auth_level=20),
@@ -24,12 +28,12 @@ class IdentAuth:
                 ]
 
         self.events = []
-        self.bootstrapped = False
+        self.config.bootstrapped = False
         #Check we are bootstrapped
         if self.has_users():
             self.bootstrapped = True
 
-        self.log.info('Finished intialising {0}'.format(module_name))
+        self.log.info(u'Finished intialising {0}'.format(module_name))
         
     def add_user_c(self, nick, nickhost, action, targets, message, m):
         nickhost = m.group('nickhost')
@@ -64,147 +68,143 @@ class IdentAuth:
         try:
            
             if self.has_users():
-                self.log.warning('Attempted to bootstrap when module was already boostrapped')
-                self.irc.msg_all("The authentication is already bootstrapped", targets)
+                self.log.warning(u'Attempted to bootstrap when module was already boostrapped')
+                self.irc.msg_all(u'The authentication is already bootstrapped', targets)
             
             else:
                 self.log.info(u'Bootstrap by user {0} successfull'.format(nick))
                 self.irc.msg_all(self.add_user(nickhost, 0), targets)
-                self.bootstrapped=True
+                self.config.bootstrapped=True
          
         except sqlite3.Error as e:
-            self.log.exception(u"Unable to boostrap auth")
+            self.log.exception(u'Unable to boostrap auth')
             result = u'Unable to bootstrap due to database error {0}'.format(e.args[0])
             self.irc.msg_all(result, targets)
                 
         
     def is_allowed(self, nick, nickhost, level):
-        if not self.bootstrapped:
-            print('not bootstrapped')
+        if not self.config.bootstrapped:
             return False
+
+        if level = 100:
+            #level 100, no auth required
+            return True
 
         try:
             c = self.db.cursor()
-            c.execute('SELECT level FROM {0} WHERE name=?'.format(self.module_name), [nickhost])
+            c.execute('SELECT level FROM {0} WHERE name=?'.format(self.config.module_name), [nickhost])
             result = c.fetchone()
             if result:
-                if level == 100:
-                    return True #level 100 means no auth required
                 users_level = result[0]
-                self.log.debug('auth check for {0} requires <= {1} and has {2}'.format(nick, level, users_level))
+                self.log.debug(u'auth check for {0} requires <= {1} and has {2}'.format(nick, level, users_level))
                 return users_level <= level
-            
+
             else:
-                self.log.warning('User auth check, but user {0} not in db'.format(nickhost))
-                if level == 100:
-                    return True #level 100 (default) means no auth required
-                    
-                else:
-                    print('fail')
-                    return False
-        
+                self.log.debug(u'User auth check, but user {0} not in db'.format(nickhost))
+                return False
+
         except sqlite3.Error as e:
             self.db.rollback()
-            self.log.exception('Unable to check users auth')
+            self.log.exception(u'Unable to check users auth')
             return False
     
     def is_user(self, nickhost):
         #search the db for our user to check if they exist before updating
-        result = self.db.execute('SELECT level FROM {0} WHERE name=?'.format(self.module_name), [nickhost]).fetchall()
+        result = self.db.execute('SELECT level FROM {0} WHERE name=?'.format(self.config.module_name), [nickhost]).fetchall()
         if not result:
-            self.log.debug('User {0} doesnt exist in db'.format(nickhost))
+            self.log.debug(u'User {0} doesnt exist in db'.format(nickhost))
             return False
         
         else:
-            self.log.debug('User {0} does exist in db'.format(nickhost))
+            self.log.debug(u'User {0} does exist in db'.format(nickhost))
             return True
 
     def has_users(self):
         try:
-            result  = self.db.execute('SELECT * FROM {0}'.format(self.module_name)).fetchall()
-            return len(result)
+            result  = self.db.execute('SELECT * FROM {0}'.format(self.config.module_name)).fetchall()
+            return len(result) > 0
         
         except sqlite3.Error as e:
-            self.log.exception('Unable to check if we have users')
+            self.log.exception(u'Unable to check if we have users')
             return 0
 
     def update_user(self, nickhost, level):
         try:
             if not self.is_user(nickhost):
-                self.log.warning("Can't update a user that doesn't exist: {0}".format(nickhost))
-                return "Unable to update user {0} as it doesn't exist in the database".format(nickhost)
+                self.log.warning(u'Cant update a user that doesnt exist: {0}'.format(nickhost))
+                return u'Unable to update user {0} as it doesn't exist in the database'.format(nickhost)
             
             else:
-                self.db.execute('UPDATE OR ABORT {0} SET level=? WHERE name=?'.format(self.module_name), [level, nickhost])
+                self.db.execute('UPDATE OR ABORT {0} SET level=? WHERE name=?'.format(self.config.module_name), [level, nickhost])
                 self.db.commit()
-                self.log.info('Successfully updated user {0}, with level {1}'.format(nickhost, level))
-                return 'Successfully updated user {0}'.format(nickhost)
+                self.log.info(u'Successfully updated user {0}, with level {1}'.format(nickhost, level))
+                return u'Successfully updated user {0}'.format(nickhost)
             
         except sqlite3.Error as e:
             self.db.rollback()
-            self.log.error('Unable to update user {0} due to database error{1}'.format(nickhost,
+            self.log.error(u'Unable to update user {0} due to database error{1}'.format(nickhost,
                                                                                        e.args[0]))
-            return 'Unable to update user {0} due to database error{1}'.format(nickhost,
+            return u'Unable to update user {0} due to database error{1}'.format(nickhost,
                                                                                e.args[0])
             
     def add_user(self, nickhost, level):
         try:
             if self.is_user(nickhost):
-                self.log.warning('Unable to add user who already exists {0}'.format(nickhost))
-                return 'Unable to add user who already exists {0}'.format(nickhost)
+                self.log.warning(u'Unable to add user who already exists {0}'.format(nickhost))
+                return u'Unable to add user who already exists {0}'.format(nickhost)
                 
             else:
-                self.db.execute('INSERT INTO {0} VALUES(?, ?)'.format(self.module_name),[nickhost, level])
+                self.db.execute('INSERT INTO {0} VALUES(?, ?)'.format(self.config.module_name),[nickhost, level])
                 self.db.commit()
-                self.log.info('Successfully added user {0} with level {1}'.format(nickhost, level))
-                return 'Successfully added user {0}'.format(nickhost)
+                self.log.info(u'Successfully added user {0} with level {1}'.format(nickhost, level))
+                return u'Successfully added user {0}'.format(nickhost)
         
         except sqlite3.Error as e:
             self.db.rollback()
-            self.log.error('Unable to add user {0} due to database error{1}'.format(nickhost,
+            self.log.error(u'Unable to add user {0} due to database error{1}'.format(nickhost,
                                                                                      e.args[0]))
-            return 'Unable to add user {0} due to a database error{1}'.format(nickhost,
+            return u'Unable to add user {0} due to a database error{1}'.format(nickhost,
                                                                                e.args[0])
     
     def delete_user(self, nickhost):
         try:
             if self.is_user(nickhost):
-                self.db.execute('DELETE FROM {0} WHERE name=?'.format(self.module_name), [nickhost])
+                self.db.execute('DELETE FROM {0} WHERE name=?'.format(self.config.module_name), [nickhost])
                 self.db.commit()
-                self.log.info('Succesfully deleted user {0}'.format(nickhost))
-                return 'Succesfully deleted user {0}'.format(nickhost)
+                self.log.info(u'Succesfully deleted user {0}'.format(nickhost))
+                return u'Succesfully deleted user {0}'.format(nickhost)
             
             else:
-                self.log.warning('Unable to delete user {0}, they do not exist in the database'.format(nickhost))
-                return 'Unable to delete user {0}, they do not exist in the database'.format(nickhost)
+                self.log.warning(u'Unable to delete user {0}, they do not exist in the database'.format(nickhost))
+                return u'Unable to delete user {0}, they do not exist in the database'.format(nickhost)
                 
         except sqlite3.Error as e:
             self.db.rollback()
-            self.log.error('Unable to delete user {0} due to database error{1}'.format(nickhost,
+            self.log.error(u'Unable to delete user {0} due to database error{1}'.format(nickhost,
                                                                                         e.args[0]))
-            return 'Unable to delete user {0} due to a database error {1}'.format(nickhost,
+            return u'Unable to delete user {0} due to a database error {1}'.format(nickhost,
                                                                                    e.args[0])
     
     def get_level(self, nickhost):
         try:
             if self.is_user(nickhost):
-                result = self.db.execute('SELECT level FROM {0} WHERE name=?'.format(self.module_name), [nickhost]).fetchone()
+                result = self.db.execute('SELECT level FROM {0} WHERE name=?'.format(self.config.module_name), [nickhost]).fetchone()
                 if result:
                     result = result[0]
-                    self.log.debug('{0} level is {1}'.format(nickhost, result))
-                    return '{0} level is {1}'.format(nickhost, result)
+                    self.log.debug(u'{0} level is {1}'.format(nickhost, result))
+                    return u'{0} level is {1}'.format(nickhost, result)
                 
                 else:
-                    self.log.warning('User {0} could not be found but should exist'.format(nickhost))
-                    return 'User {0} could not be retrieved'.format(nickhost)
+                    self.log.warning(u'User {0} could not be found but should exist'.format(nickhost))
+                    return u'User {0} could not be retrieved'.format(nickhost)
             
             else:
-                self.log.debug('User {0} does not exist'.format(nickhost))
-                return 'User {0} does not exist'.format(nickhost)
+                self.log.debug(u'User {0} does not exist'.format(nickhost))
+                return u'User {0} does not exist'.format(nickhost)
                 
         except sqlite3.Error as e:
-            self.log.exception('Could not get level for {0}'.format(nickhost))
-            return 'Could not get level for {0}'.format(nickhost)
+            self.log.exception(u'Could not get level for {0}'.format(nickhost))
+            return u'Could not get level for {0}'.format(nickhost)
 
 
 class DummyBot:
@@ -215,7 +215,7 @@ class DummyBot:
         self.log = logging.getLogger(self.log_name)
         self.log.setLevel(log_level)
         h = logging.StreamHandler()
-        f = logging.Formatter("%(name)s %(levelname)s %(funcName)s %(message)s")
+        f = logging.Formatter('%(name)s %(levelname)s %(funcName)s %(message)s')
         h.setFormatter(f)
         self.log.addHandler(h)
         

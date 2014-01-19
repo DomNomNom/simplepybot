@@ -15,26 +15,47 @@ import numerics as nu
 from ident import IdentHost
 from identcontrol import IdentControl
 
+'''
+A dictionary that acts kinda like a class
+This wizardry is from
+http://stackoverflow.com/questions/4984647/accessing-dict-keys-like-an-attribute-in-python
+Will cause a memory leak in versions lower <2.7.3 and <3.2.3
+
+We use it for the config, for a nicer way to access things
+'''
+class AttrDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs) #This calls all dict instantiation code
+        self.__dict__ = self #So that this line is a valid call
+
 class CommandBot():
     '''
     A simple IRC bot with command processing, event processing and timed event functionalities
     A framework for adding more modules to do more complex stuff
     '''
 
-    def __init__(self, nick, network, port, max_log_len = 100, authmodule=None, ircmodule=None,
-                 db_file = "bot.db", module_name="core", log_name="core", log_level=logging.DEBUG,
-                 log_handlers = None):
+    def __init__(self, config, module_name='core', authmodule=None, ircmodule=None, identmodule=None):
+        '''
+        Create a new ircbot framework
+        config is a mapping of module_name => AttrDict, that has config for each module
+        module_name is the module name, and is also used to get the appropriate config dict
+        authmodule - optional override of the authentication module the bot uses
+        ircmodule -optional override of the irc wrapper the bot uses
+        identmodule - optional override of the identity/channel mapper the bot uses
+        '''
 
         self.modules = {}
-        #set up logging stuff
-        self.log_name = log_name
-        self.module_name = module_name
-        self.log = logging.getLogger(self.log_name)
-        self.log.setLevel(log_level)
+        #store all the config
+        self.all_config = config
+        #get our config AttrDict out
+        self.config = config[self.module_name]
+        self.config.module_name = self.module_name
+        self.log = logging.getLogger(self.config.log_name)
+        self.log.setLevel(self.config.log_level)
         
         #if handlers were given we need to add them
         if log_handlers:
-            for handler in log_handlers:
+            for handler in self.config.log_handlers:
                 self.log.addHandler(handler)
                 
         #set up network stuff
@@ -42,51 +63,40 @@ class CommandBot():
         self.inq = Queue.PriorityQueue()
         self.outq = Queue.PriorityQueue()
         #Set up network class
-        net = Network(self.inq, self.outq, self.log_name)
+        net = Network(self.inq, self.outq, self.config.log_name)
         #Despatch the thread
-        self.log.debug("Dispatching network thread")
+        self.log.debug('Dispatching network thread')
         thread = threading.Thread(target=net.loop)
         thread.start()
-        #params for connection
-        self.nick = nick
-        self.network = network
-        self.port = port
-       
         #network stuff done
 
-        #TODO a lot of these need to be made into config options, along with most of the
-        #kwarg params
-        self.max_reconnects = 3
-        self.times_reconnected = 0
+        #tracker for if we are actually running
+        #TODO what is this for?
         self.is_running=True
 
         #create a ref to the db connection
-        self.db = sqlite3.connect(db_file)
+        self.db = sqlite3.connect(self.config.db_file)
 
-        #irc module bootstrapped before auth and ident, as auth uses it
+        #irc wrapper bootstrapped before auth and ident, as they both require it
         if not ircmodule:
-            self.irc = IRC_Wrapper(self)
+            self.irc = IRC_Wrapper(self, self.all_config)
         
         else:
-            self.irc = ircmodule
+            self.irc = ircmodule(self, self.all_config)
         
-        self.ident = IdentHost(self, log_level=log_level)#set up ident
-        self.identcontrol = IdentControl(self) # module for controlling it
+        if not identmodule:
+            self.ident = IdentHost(self, self.all_config)#set up ident
+            self.identcontrol = IdentControl(self, self.all_config) # module for controlling it
+        
+        else:
+            self.ident = identmodule(self, self.all_config)
 
         #if no authmodule is passed through, use the default host/ident module
         if not authmodule:
-            self.auth = IdentAuth(self)
+            self.auth = IdentAuth(self, self.all_config)
         
         else:
-            self.auth = authmodule
-
-        
-        #variables for determining when the bot is registered
-        self.registered = False
-        self.channels = []
-
-        #variables for bot functionality
-        self.is_mute = False
+            self.auth = authmodule(self, self.all_config)
 
         self.commands = [
                 self.command("quit", self.end, direct=True, auth_level=20),
@@ -111,9 +121,9 @@ class CommandBot():
         self.timed_events = []
 
         #send out events to connect and send USER and NICK commands
-        self.irc.connect(self.network, self.port)
-        self.irc.user(self.nick, "Python Robot")
-        self.irc.nick(self.nick)
+        self.irc.connect(self.config.network, self.config.port)
+        self.irc.user(self.config.nick, "Python Robot")
+        self.irc.nick(self.config.nick)
 
     def command(self, expr, func, direct=False, can_mute=True, private=False,
                 auth_level=100):
@@ -139,7 +149,6 @@ class CommandBot():
         extract information from the command
         '''
         guard = re.compile(expr)
-        bot = self
         def process(source, action, args, message):
             #grab nick and nick host
             nick, nickhost = source.split("!")
@@ -150,25 +159,25 @@ class CommandBot():
             #I guess they weren"t thinking of bots when they wrote the spec
             #so we replace any instance of our nick with their nick
             for i, channel in enumerate(args[:]):
-                if channel == self.nick:
+                if channel == self.config.nick:
                     args[i] = nick
                     
             #make sure this message was prefixed with our bot username
             if direct:
-                if not message.startswith(bot.nick):
+                if not message.startswith(self.config.nick):
                     return False
 
                 #strip nick from message
-                message = message[len(bot.nick):]
+                message = message[len(self.config.nick):]
                 #strip away any syntax left over from addressing
                 #this may or may not be there
                 message = message.lstrip(": ")
             
-            #If muted, or message private, send it to user not channel
-            if (self.is_mute or private) and can_mute:
+            #If muted, or message private and the message can be muted
+            #then send it direct to user via pm
+            if (self.config.is_mute or private) and can_mute:
                 #replace args with usernick stripped from source
                 args = [nick]
-            
 
             #check it matches regex and grab the matcher object so the function can
             #pull stuff out of it
@@ -252,12 +261,13 @@ class CommandBot():
         '''
         Primary loop.
         You'll need to transfer control to this function before execution begins.
-        This is provided so you can hook in at the loop level and change things here
-        in a subclass
         '''
-        while self.is_running:
+        while self.config.is_running:
             self.logic()
             time.sleep(.1)
+
+        #clean up things after all modules have closed
+        self.cleanup()
         self.log.info("Bot ending")
 
     def logic(self):
@@ -280,10 +290,8 @@ class CommandBot():
         try:
             #try to grab an event from the inbound queue
             m_event = self.inq.get(False)
-            self.log.debug(u"Inbound event {0}".format(m_event))
+            self.log.debug(u'Inbound event {0}'.format(m_event))
             was_event = False
-            #this is the cleaned data from an irc msg
-            #i.e PRIVMSG francis!francis@localhost [#bots] "hey all"
             #if a priv message we first pass it through the command handlers
             if m_event.type == nu.BOT_PRIVMSG:
                 was_event=True
@@ -293,11 +301,11 @@ class CommandBot():
                     try:
                         if command(source, action, args, message):
                             action = nu.BOT_COMM #we set the action to command so valid commands can be identified by modules
-                            break #TODO, should we break, needs a lot more thought
+                            break
 
                     except Exception as e:
-                        self.log.exception(u"Error in bot command handler")
-                        self.irc.msg_all(u"Unable to complete request due to internal error", args)
+                        self.log.exception(u'Error in bot command handler')
+                        self.irc.msg_all(u'I experienced an error', args)
                         
 
                 for module_name in self.modules:
@@ -309,8 +317,8 @@ class CommandBot():
                                 break
 
                         except Exception as e:
-                            self.log.exception("Error in module command handler:{0}".format(module_name))
-                            self.irc.msg_all("Unable to complete request due to internal error", args)
+                            self.log.exception(u'Error in module command handler:{0}'.format(module_name))
+                            self.irc.msg_all(u'{0} experienced an error'.format(module_name), args)
 
             #check it against the event commands
             for event in self.events:
@@ -319,7 +327,7 @@ class CommandBot():
                         was_event = True
 
                 except Exception as e:
-                    self.log.exception("Error in bot event handler")
+                    self.log.exception(u'Error in internal event handler')
 
             for module_name in self.modules:
                 module = self.modules[module_name]
@@ -329,10 +337,10 @@ class CommandBot():
                             was_event = True
 
                     except Exception as e:
-                        self.log.exception(u"Error in module event handler: {0}".format(module_name))
+                        self.log.exception(u'Error in module event handler: {0}'.format(module_name))
 
             if not was_event:
-                self.log.debug(u"Unhandled event {0}".format(m_event))
+                self.log.info(u'Unhandled event {0}'.format(m_event))
 
         except Queue.Empty:
             #nothing to do
@@ -345,7 +353,7 @@ class CommandBot():
                     event.func(*event.func_args, **event.func_kwargs)
 
                 except Exception as e:
-                    self.log.exception("Error in timed event handler")
+                    self.log.exception(u'Error in timed event handler')
 
             if event.is_expired():
                 #remove from the original list
@@ -353,70 +361,58 @@ class CommandBot():
 
         return
 
-    def syntax (self, nick, nickhost, action, targets, message, m):
-        '''
-        either lists all module names or if a modulename is provided
-        calls that modules syntax method
-        '''
-        if m.group("module"):
-            module = m.group("module")
-            if self.has_module(module):
-                try:
-                    self.get_module(module).syntax()
-
-                except AttributeError as e:
-                    self.log.warn(u"Module {0} has no syntax method".format(module))
-        
-        else:
-            msg = ", ".join(self.modules.keys())
-            self.irc.msg_all(msg, targets)
-
     def end(self, nick, nickhost, action, targets, message, m):
         '''
         End this bot, closing each module and quitting the server
         '''
-        self.log.info("Shutting down bot")
-        self.db.close()
+        self.log.info(u'Shutting down bot')
         for name in self.modules:
             module = self.modules[name]
             try:
                 module.close()
             except AttributeError as e:
-                self.log.warning(u"Module {0} has no close method".format(name))
+                self.log.warning(u'Module {0} has no close method'.format(name))
 
-        self.irc.quit("Goodbye for now")
-        self.irc.kill()
-        self.is_running=False
+        self.irc.quit(u'Bot has been terminated by {0}'.format(nick))#send quit msg to server
+        self.irc.kill() # tell the network thread to shutdown
+        self.config.is_running=False
+    
+    def cleanup()
+        '''
+        Cleanup any remaining things now that all modules are closed
+        Currently used to close db
+        '''
+        self.db.close()
 
     def mute(self, nick, nickhost, action, targets, message, m):
         '''
         mute/unmute the bot
         '''
-        self.is_mute = not self.is_mute
+        self.config.is_mute = not self.config.is_mute
 
-        if self.is_mute:
-            message = "Bot is now muted"
+        if self.config.is_mute:
+            message = u'Bot is now muted'
         
         else:
-            message = "Bot is now unmuted"
+            message = u'Bot is now unmuted'
 
         self.irc.msg_all(message, targets)
 
     def registered_event(self, source, action, args, message):
         '''
-        this is called when a 001 welcome message gets received
+        this is called when a MOTD or NOMOTD message gets received
         any actions that require you to be registered with
         name and nick first are cached and then called when
         this event is fired, for example, joining channels
         '''
         #TODO: what else do we need to extend this too?
         #messages/privmsgs
-        self.registered = True
+        self.config.registered = True
         for channel in self.channels:
             self.join(channel)
 
     def join(self, channel):
-        if self.registered:
+        if self.config.registered:
             #send join event
             self.irc.join(channel)
             #tell the ident module we joined this channel
@@ -432,30 +428,28 @@ class CommandBot():
         before quitting
         '''
         #if we have been kicked, don"t attempt a reconnect
-        if  event == "KILL":
-            self.log.info("No reconnection attempt due to being killed")
+        if  event == nu.BOT_KILL:
+            self.log.info(u'No reconnection attempt due to being killed')
             self.close()
             
-        self.log.error("Lost connection to server:{0}".format(message))
-        if self.times_reconnected >= self.max_reconnects:
-            self.log.error("Unable to reconnect to server on third attempt")
+        self.log.error(u'Lost connection to server:{0}'.format(message))
+        if self.config.times_reconnected >= self.config.max_reconnects:
+            self.log.error(u'Unable to reconnect to server on final retry attempt')
             self.close()
         
         else:
-            self.log.info(u"Sleeping before reconnection attempt, {0} seconds".format(self.times_reconnected*60))
-            time.sleep((self.times_reconnected+1)*60)
-            self.registered = False
-            self.log.info(u"Attempting reconnection, attempt no: {0}".format(self.times_reconnected))
-            self.times_reconnected += 1
+            self.log.info(u'Sleeping before reconnection attempt, {0} seconds'.format(self.times_reconnected*60))
+            time.sleep((self.config.times_reconnected+1)*60)
+            self.config.registered = False
+            self.log.info(u'Attempting reconnection, attempt no: {0}'.format(self.times_reconnected))
+            self.config.times_reconnected += 1
             #set up events to connect and send USER and NICK commands
-            self.irc.connect(self.network, self.port)
-            self.irc.user(self.nick, "Python Robot")
-            self.irc.nick(self.nick)
+            self.irc.connect(self.config.network, self.config.port)
+            self.irc.user(self.config.nick, 'Python Robot')
+            self.irc.nick(self.config.nick)
     
     def ping(self, source, action, args, message):
         '''
         Called on a ping and responds with a PONG
-        Module authors can also hook the PING event for a low resolution timer
-        if you didn"t want to use the timed events system for some reason
         '''
         self.irc.pong(message)

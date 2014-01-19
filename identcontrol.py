@@ -1,13 +1,19 @@
 import logging
 
 class IdentControl:
-    def __init__(self, bot, module_name='identcontrol', log_level = logging.INFO):
+    def __init__(self, bot, module_name='identcontrol', config):
+        self.config = config[module_name]
+        self.config.module_name = module_name
         self.bot = bot
-        self.log = logging.getLogger('{0}.{1}'.format(bot.log_name, module_name))
-        self.log.setLevel(log_level)
+
+        self.log = logging.getLogger(self.config.module_name)
+        self.log.setLevel(self.config.log_level)
+        for handler in self.config.log_handlers
+            self.log.addHandler(handler)
+
         self.irc = bot.irc
         self.ident = bot.ident
-        self.module_name = module_name
+
         self.commands = [
                         self.bot.command('!nick (?P<nick>.*)', self.find_nick),
                         self.bot.command('!nickhost (?P<nickhost>.*)', self.find_nick_host),
@@ -15,7 +21,9 @@ class IdentControl:
                         self.bot.command('!channels (?P<nick>.*)', self.find_channels_user_in),
                         ]
         self.events =   []
-        self.bot.add_module(module_name, self)
+
+        self.bot.add_module(self.config.module_name, self)
+        self.log.info(u'{0} finished intialising'.format(self.config.module_name))
     
     def find_nick(self, nick, nickhost, action, targets, message, m):
         nick = m.group('nick')

@@ -11,18 +11,21 @@ class IRC_Wrapper:
     the irc methods
     '''
     
-    def __init__(self, bot, module_name = "irc", log_level = logging.DEBUG):
+    def __init__(self, bot, module_name = "irc", config):
         self.commands = [                
                 ]
         self.events = [
                 ]
+        self.config = config[module_name]
+        self.module_name = mdoule_name
+        self.log = logging.getLogger(self.config.module_name)
+        self.log.setLevel(self.config.log_level)
+        for handler in self.config.log_handlers:
+            self.log.addHandler(handler)
 
-        self.module_name = module_name
-        self.log = logging.getLogger("{0}.{1}".format(bot.log_name, self.module_name))
-        self.log.setLevel(log_level)
         self.bot = bot
-        self.bot.add_module(self.module_name, self)
-        self.log.info("Finished initialising {0}".format(module_name)) 
+        self.bot.add_module(self.config.module_name, self)
+        self.log.info("Finished initialising {0}".format(self.config.module_name)) 
     
     #useful methods
     def join(self, channel, priority=3):

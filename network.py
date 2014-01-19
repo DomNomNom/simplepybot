@@ -18,17 +18,20 @@ class Network(object):
     #Really long regex to match and split most irc messages correctly (No guarantees though as I haven"t fully roadtested it)
     ircmsg = re.compile(r"(?P<prefix>:\S+ )?(?P<command>(\w+|\d{3}))(?P<params>( [^:]\S+)*)(?P<postfix> :.*)?")
 
-    def __init__(self, inqueue, outqueue, botname, module_name="network", b_size = 1024, log_level=logging.INFO):
+    def __init__(self, inqueue, outqueue, module_name='network', config):
+        self.config = config[module_name]
+        self.config.module_name = module_name
+
+        #setup and configure socket
         self.socket = None
-        self.module_name = module_name
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setblocking(0)
-        self.incomplete_buffer = ""
-        self.buffer_size = b_size
-        self.log = logging.getLogger(u"{0}.{1}".format(botname, module_name))
-        self.log.setLevel(log_level)
-        self.is_running = True
-        self.connected = False
+
+        #some useful stuff
+        self.incomplete_buffer = ''
+        self.log = logging.getLogger(self.config.module_name)
+        self.log.setLevel(self.config.log_level)
+
         #priority queues with data in form of (priority, data)
         self.inq = inqueue
         self.outq = outqueue
@@ -60,8 +63,8 @@ class Network(object):
 
     def loop(self):
         self.log.debug('Looping started')
-        while self.is_running:
-            if not self.connected:
+        while self.config.is_running:
+            if not self.config.connected:
                 try:
                     m_event = self.outq.get(False)
                     if m_event.type == nu.BOT_CONN:
@@ -73,6 +76,7 @@ class Network(object):
                     pass
             else:
                 self.poll_sockets()
+        self.socket.close()#cleanup
         self.log.info('network ending')
 
     def poll_sockets(self):
@@ -85,6 +89,7 @@ class Network(object):
             for r in readable:
                 #read from r, placing the messages in the given queue 
                 self.handle_input(r, self.inq)
+                writable.remove(r)#TODO will this fix error on linux
 
         if writable and not self.outq.empty():
             for w in writable:
@@ -103,7 +108,7 @@ class Network(object):
             self.log.error(u'No sockets left to read/write')
             self.connected = False
             #highest priority message that will get client to attempt to reconnect
-            self.inq.put(eu.error('No sockets left to read/write from', priority=1))
+            self.inq.put(eu.error(u'No sockets left to read/write from', priority=1))
 
     def handle_output(self, socket, outqueue):
         '''
@@ -141,10 +146,10 @@ class Network(object):
             clean.append(cleaned_message)
         
         #go through the cleaned messages and put them through our internal
-        #event handling before they reach client (normally used to tweak priorities)
+        #event handling before they reach client, no use as of now
         for msg in clean:
             for event in self.in_events:
-                event(msg) #TODO do I really need this?
+                event(msg)
 
             self.inq.put(msg)
 
@@ -163,8 +168,7 @@ class Network(object):
         '''
         Receives data from the server.
         '''
-        buffer_size = self.buffer_size
-        d = self.socket.recv(buffer_size)
+        d = self.socket.recv(self.config.buffer_size)
 
         data = d.decode('utf-8', 'replace')
 
@@ -199,7 +203,7 @@ class Network(object):
         m = self.ircmsg.match(message)
 
         if not m:
-            self.log.warn(u'Couldn\'t match message {0}'.format(message))
+            self.log.warn(u'Couldnt match message {0}'.format(message))
             return None
 
         postfix = m.group('postfix')
@@ -220,7 +224,6 @@ class Network(object):
             params = params.split(' ')
         
         self.log.debug(u'Cleaned message, prefix = {0}, command = {1}, params = {2}, postfix = {3}'.format(prefix, command, params, postfix))
-        self.log.info(u'<< {0} {1} {2} {3}'.format(prefix, command, params, postfix))
         return eu.irc_msg(command, (command, prefix, params, postfix))
 
     #Everything below this point are handlers for events from botcore
@@ -293,7 +296,7 @@ class Network(object):
         '''
         Die!
         '''
-        self.is_running = False
+        self.config.is_running = False
 
     def leave(self, channel, message):
         '''
@@ -313,10 +316,8 @@ class Network(object):
         try:
             self.socket.connect((server,port))
         except socket.error as e:
-            #TODO: is this still necessary
-            #now that we use select
-            #to determine if the socket is ready
-            #for use?
+            #socket is still being setup
+            #select should be dealing with this
             if e.errno == 10035:
                 pass
             else:

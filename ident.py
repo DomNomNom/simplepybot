@@ -4,12 +4,16 @@ import numerics as nu
 import event_util as eu
 
 class IdentHost:
-    def __init__(self, bot, module_name='identhost', log_level = logging.INFO):
+    def __init__(self, bot, module_name='identhost', config):
         self.bot = bot
-        self.log = logging.getLogger(u'{0}.{1}'.format(bot.log_name, module_name))
-        self.log.setLevel(log_level)
+        self.config = config[module_name]
+        self.config.module_name = module_name
+        self.log = logging.getLogger(module_name)
+        self.log.setLevel(self.config.log_level)
+        for handler in self.config.log_handlers:
+            self.log.addHandlers(handler)
+
         self.irc = bot.irc
-        self.module_name = module_name
         self.channels = []
         self.nickmap = defaultdict(str)
         self.hostmap = defaultdict(str)
@@ -23,7 +27,7 @@ class IdentHost:
                         eu.event(nu.BOT_QUIT, self.user_quit),
                         eu.event(nu.BOT_NICK, self.user_changed_nick),
                         ]
-        self.bot.add_module(module_name, self)
+        self.bot.add_module(self.config.module_name, self)
 
 
     def is_user(self, user):
@@ -215,11 +219,12 @@ class IdentHost:
 
     def join_channel(self, channel):
         '''
-        We just joined a channel, deal with the list of users we are getting
+        We just joined a channel
+        send a who command to get the current users
         '''
         self.log.debug(u'Joined channel {0}'.format(channel))
         self.add_channel(channel)
-        self.irc.who(channel)#WE'RE GETTING THE NAMES MAN
+        self.irc.who(channel)#get the users in this channel
         pass
 
     def users_who(self, command, prefix, params, postfix):
