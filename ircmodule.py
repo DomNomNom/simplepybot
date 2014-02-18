@@ -17,7 +17,7 @@ class IRC_Wrapper:
         self.events = [
                 ]
         self.config = config[module_name]
-        self.module_name = mdoule_name
+        self.module_name = module_name
         self.log = logging.getLogger(self.config.module_name)
         self.log.setLevel(self.config.log_level)
         for handler in self.config.log_handlers:
