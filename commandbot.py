@@ -52,12 +52,12 @@ class CommandBot():
         self.config.module_name = self.module_name
         self.log = logging.getLogger(self.config.log_name)
         self.log.setLevel(self.config.log_level)
-        
+
         #if handlers were given we need to add them
         if log_handlers:
             for handler in self.config.log_handlers:
                 self.log.addHandler(handler)
-                
+
         #set up network stuff
         #IO queues
         self.inq = Queue.PriorityQueue()
@@ -80,21 +80,21 @@ class CommandBot():
         #irc wrapper bootstrapped before auth and ident, as they both require it
         if not ircmodule:
             self.irc = IRC_Wrapper(self, self.all_config)
-        
+
         else:
             self.irc = ircmodule(self, self.all_config)
-        
+
         if not identmodule:
             self.ident = IdentHost(self, self.all_config)#set up ident
             self.identcontrol = IdentControl(self, self.all_config) # module for controlling it
-        
+
         else:
             self.ident = identmodule(self, self.all_config)
 
         #if no authmodule is passed through, use the default host/ident module
         if not authmodule:
             self.auth = IdentAuth(self, self.all_config)
-        
+
         else:
             self.auth = authmodule(self, self.all_config)
 
@@ -152,16 +152,15 @@ class CommandBot():
         def process(source, action, args, message):
             #grab nick and nick host
             nick, nickhost = source.split("!")
-            
+
             #unfortunately there is weirdness in irc and when you get addressed in
             #a privmsg you see your own name as the channel instead of theirs
             #It would be nice if both sides saw the other persons name
-            #I guess they weren"t thinking of bots when they wrote the spec
             #so we replace any instance of our nick with their nick
             for i, channel in enumerate(args[:]):
                 if channel == self.config.nick:
                     args[i] = nick
-                    
+
             #make sure this message was prefixed with our bot username
             if direct:
                 if not message.startswith(self.config.nick):
@@ -172,7 +171,7 @@ class CommandBot():
                 #strip away any syntax left over from addressing
                 #this may or may not be there
                 message = message.lstrip(": ")
-            
+
             #If muted, or message private and the message can be muted
             #then send it direct to user via pm
             if (self.config.is_mute or private) and can_mute:
@@ -201,10 +200,10 @@ class CommandBot():
             return True
 
         return process
-    
+
     def in_event(self, event):
         self.inq.put(event)
-    
+
     def out_event(self, event):
         self.outq.put(event)
 
@@ -244,7 +243,7 @@ class CommandBot():
         interval = timedelta(seconds=seconds)
         end_time = start_time + interval
         self.add_timed_event(start_time, end_time, interval, func, func_args, func_kwargs)
-        
+
     def add_timed_event(self, start_time, end_time, interval, func, func_args=(), func_kwargs={}):
         '''
         Add an event that will trigger once at start_time and then every time
@@ -306,7 +305,6 @@ class CommandBot():
                     except Exception as e:
                         self.log.exception(u'Error in bot command handler')
                         self.irc.msg_all(u'I experienced an error', args)
-                        
 
                 for module_name in self.modules:
                     module = self.modules[module_name]
@@ -376,7 +374,7 @@ class CommandBot():
         self.irc.quit(u'Bot has been terminated by {0}'.format(nick))#send quit msg to server
         self.irc.kill() # tell the network thread to shutdown
         self.config.is_running=False
-    
+
     def cleanup()
         '''
         Cleanup any remaining things now that all modules are closed
@@ -392,7 +390,7 @@ class CommandBot():
 
         if self.config.is_mute:
             message = u'Bot is now muted'
-        
+
         else:
             message = u'Bot is now unmuted'
 
@@ -431,12 +429,12 @@ class CommandBot():
         if  event == nu.BOT_KILL:
             self.log.info(u'No reconnection attempt due to being killed')
             self.close()
-            
+
         self.log.error(u'Lost connection to server:{0}'.format(message))
         if self.config.times_reconnected >= self.config.max_reconnects:
             self.log.error(u'Unable to reconnect to server on final retry attempt')
             self.close()
-        
+
         else:
             self.log.info(u'Sleeping before reconnection attempt, {0} seconds'.format(self.times_reconnected*60))
             time.sleep((self.config.times_reconnected+1)*60)
@@ -447,7 +445,7 @@ class CommandBot():
             self.irc.connect(self.config.network, self.config.port)
             self.irc.user(self.config.nick, 'Python Robot')
             self.irc.nick(self.config.nick)
-    
+
     def ping(self, source, action, args, message):
         '''
         Called on a ping and responds with a PONG

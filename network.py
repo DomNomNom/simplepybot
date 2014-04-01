@@ -87,7 +87,7 @@ class Network(object):
         readable, writable, exceptional = select.select(self.inputs, self.outputs, self.inputs)
         if readable:
             for r in readable:
-                #read from r, placing the messages in the given queue 
+                #read from r, placing the messages in the given queue
                 self.handle_input(r, self.inq)
                 writable.remove(r)#TODO will this fix error on linux
 
@@ -102,7 +102,7 @@ class Network(object):
                 self.log.error(u'Exceptional socket {0}'.format(e.getpeername()))
                 self.inputs.remove(e)
                 self.outputs.remove(e)
-        
+
         #if we lost all our sockets
         if not self.inputs or not self.outputs:
             self.log.error(u'No sockets left to read/write')
@@ -144,7 +144,7 @@ class Network(object):
         for line in result:
             cleaned_message = self.parse_message(line)
             clean.append(cleaned_message)
-        
+
         #go through the cleaned messages and put them through our internal
         #event handling before they reach client, no use as of now
         for msg in clean:
@@ -162,7 +162,7 @@ class Network(object):
         while totalsent < len(line):
             sent = self.socket.send(line[totalsent:].encode(encoding))
             totalsent = totalsent + sent
-                
+
 
     def recv(self):
         '''
@@ -177,8 +177,8 @@ class Network(object):
 
         The last incomplete message (if any) will be stored in the incomplete
         buffer variable to be used in the next read of the data stream
-        
-        Every time we get new data we put the incomplete buffer at the front then we 
+
+        Every time we get new data we put the incomplete buffer at the front we then 
         check if the last 2 chars are the delimiter, in which case we have a full
         irc msg so we can just split the data. Otherwise we have to split the data
         and put the last incomplete item on the buffer
@@ -222,8 +222,9 @@ class Network(object):
         if params:
             params = params.strip(' ')
             params = params.split(' ')
-        
-        self.log.debug(u'Cleaned message, prefix = {0}, command = {1}, params = {2}, postfix = {3}'.format(prefix, command, params, postfix))
+
+        self.log.debug(u'Cleaned message, prefix = {0}, command = {1},
+             params = {2}, postfix = {3}'.format(prefix, command, params, postfix))
         return eu.irc_msg(command, (command, prefix, params, postfix))
 
     #Everything below this point are handlers for events from botcore
@@ -251,7 +252,7 @@ class Network(object):
         Send a message to a specific target.
         message: the message to send
         channel: the target to send it to
-        
+
         This method takes care of enforcing the 512 character limit
         right now it does it very simply by cutting the message at char 510
         (leaving space for the \r\n) and calling msg again with the remainder
@@ -264,7 +265,7 @@ class Network(object):
             remainder = msg[510:]
             self.send(sending)
             self.msg(remainder, channel)
-        
+
         else:
             self.send(msg)
 
@@ -279,7 +280,7 @@ class Network(object):
         '''
         Join a channel.
         channel: the channel to join
-        '''      
+        '''
         self.send(u'JOIN {0}'.format(channel))
 
     def quit(self, message):
@@ -288,10 +289,10 @@ class Network(object):
         '''
         if message:
             self.send(u'QUIT :{0}'.format(message))
-        
+
         else:
             self.send(u'QUIT')
-    
+
     def kill(self):
         '''
         Die!
@@ -337,10 +338,10 @@ class Network(object):
         HOSTNAME and SERVERNAME are given as pybot
         '''
         self.send(u'USER {0} pybot pybot :{1}'.format(nick, realname))
-    
+
     def pong(self, msg):
         self.send(u'PONG {0}'.format(msg))
-        
+
     def names(self, channels):
         '''
         Send the NAMES command with the given set of channels to call
@@ -350,7 +351,7 @@ class Network(object):
             self.send(u'NAMES {0}'.format(','.join(channels)))
         else:
             self.send(u'NAMES')
-    
+
     def who(self, param):
         '''
         send the Who message with given param
