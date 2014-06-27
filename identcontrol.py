@@ -1,14 +1,14 @@
 import logging
 
 class IdentControl:
-    def __init__(self, bot, module_name='identcontrol', config):
+    def __init__(self, bot, config, module_name='identcontrol'):
         self.config = config[module_name]
         self.config.module_name = module_name
         self.bot = bot
 
         self.log = logging.getLogger(self.config.module_name)
         self.log.setLevel(self.config.log_level)
-        for handler in self.config.log_handlers
+        for handler in self.config.log_handlers:
             self.log.addHandler(handler)
 
         self.irc = bot.irc

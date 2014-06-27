@@ -11,8 +11,8 @@ class IRC_Wrapper:
     the irc methods
     '''
     
-    def __init__(self, bot, module_name = "irc", config):
-        self.commands = [                
+    def __init__(self, bot, config, module_name = "irc"):
+        self.commands = [
                 ]
         self.events = [
                 ]

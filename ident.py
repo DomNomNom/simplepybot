@@ -4,7 +4,7 @@ import numerics as nu
 import event_util as eu
 
 class IdentHost:
-    def __init__(self, bot, module_name='identhost', config):
+    def __init__(self, bot, config, module_name='identhost'):
         self.bot = bot
         self.config = config[module_name]
         self.config.module_name = module_name

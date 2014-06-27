@@ -18,10 +18,8 @@ class Network(object):
     #Really long regex to match and split most irc messages correctly (No guarantees though as I haven"t fully roadtested it)
     ircmsg = re.compile(r"(?P<prefix>:\S+ )?(?P<command>(\w+|\d{3}))(?P<params>( [^:]\S+)*)(?P<postfix> :.*)?")
 
-    def __init__(self, inqueue, outqueue, module_name='network', config):
+    def __init__(self, inqueue, outqueue, config):
         self.config = config[module_name]
-        self.config.module_name = module_name
-
         #setup and configure socket
         self.socket = None
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -223,8 +221,7 @@ class Network(object):
             params = params.strip(' ')
             params = params.split(' ')
 
-        self.log.debug(u'Cleaned message, prefix = {0}, command = {1},
-             params = {2}, postfix = {3}'.format(prefix, command, params, postfix))
+        self.log.debug(u'Cleaned message, prefix = {0}, command = {1}, params = {2}, postfix = {3}'.format(prefix, command, params, postfix))
         return eu.irc_msg(command, (command, prefix, params, postfix))
 
     #Everything below this point are handlers for events from botcore

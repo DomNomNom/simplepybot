@@ -2,9 +2,8 @@ import sqlite3
 import logging
 
 class IdentAuth:
-    def __init__(self, bot, module_name='identauth', config):
+    def __init__(self, bot, config, module_name='identauth'):
         self.config = config[module_name]#get our config
-        self.config.module_name = module_name
         self.bot = bot
         self.log = logging.getLogger(self.config.module_name)
         self.log.setLevel(self.config.log_level)
@@ -80,13 +79,12 @@ class IdentAuth:
             self.log.exception(u'Unable to boostrap auth')
             result = u'Unable to bootstrap due to database error {0}'.format(e.args[0])
             self.irc.msg_all(result, targets)
-                
-        
+
     def is_allowed(self, nick, nickhost, level):
         if not self.config.bootstrapped:
             return False
 
-        if level = 100:
+        if level == 100:
             #level 100, no auth required
             return True
 
@@ -132,14 +130,14 @@ class IdentAuth:
         try:
             if not self.is_user(nickhost):
                 self.log.warning(u'Cant update a user that doesnt exist: {0}'.format(nickhost))
-                return u'Unable to update user {0} as it doesn't exist in the database'.format(nickhost)
-            
+                return u'Unable to update user {0} as it doesn\'t exist in the database'.format(nickhost)
+
             else:
                 self.db.execute('UPDATE OR ABORT {0} SET level=? WHERE name=?'.format(self.config.module_name), [level, nickhost])
                 self.db.commit()
                 self.log.info(u'Successfully updated user {0}, with level {1}'.format(nickhost, level))
                 return u'Successfully updated user {0}'.format(nickhost)
-            
+
         except sqlite3.Error as e:
             self.db.rollback()
             self.log.error(u'Unable to update user {0} due to database error{1}'.format(nickhost,

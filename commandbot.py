@@ -375,7 +375,7 @@ class CommandBot():
         self.irc.kill() # tell the network thread to shutdown
         self.config.is_running=False
 
-    def cleanup()
+    def cleanup():
         '''
         Cleanup any remaining things now that all modules are closed
         Currently used to close db
