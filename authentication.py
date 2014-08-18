@@ -2,8 +2,8 @@ import sqlite3
 import logging
 
 class IdentAuth:
-    def __init__(self, bot, config, module_name='identauth'):
-        self.config = config[module_name]#get our config
+    def __init__(self, bot, config):
+        self.config = config#get our config
         self.bot = bot
         self.log = logging.getLogger(self.config.module_name)
         self.log.setLevel(self.config.log_level)
@@ -33,13 +33,13 @@ class IdentAuth:
             self.bootstrapped = True
 
         self.log.info(u'Finished intialising {0}'.format(module_name))
-        
+
     def add_user_c(self, nick, nickhost, action, targets, message, m):
         nickhost = m.group('nickhost')
         level = int(m.group('level'))
         result = self.add_user(nickhost, level)
         self.irc.msg_all(result, targets)
-    
+
     def update_user_c(self, nick, nickhost, action, targets, message, m):
         nickhost = m.group('nickhost')
         level = int(m.group('level'))

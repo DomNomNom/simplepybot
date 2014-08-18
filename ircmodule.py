@@ -10,13 +10,13 @@ class IRC_Wrapper:
     out the queue calls to provide a less verbose method of calling
     the irc methods
     '''
-    
+
     def __init__(self, bot, config, module_name = "irc"):
         self.commands = [
                 ]
         self.events = [
                 ]
-        self.config = config[module_name]
+        self.config = config
         self.module_name = module_name
         self.log = logging.getLogger(self.config.module_name)
         self.log.setLevel(self.config.log_level)
@@ -26,7 +26,7 @@ class IRC_Wrapper:
         self.bot = bot
         self.bot.add_module(self.config.module_name, self)
         self.log.info("Finished initialising {0}".format(self.config.module_name)) 
-    
+
     #useful methods
     def join(self, channel, priority=3):
         '''

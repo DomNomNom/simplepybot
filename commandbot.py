@@ -15,6 +15,7 @@ import numerics as nu
 from ident import IdentHost
 from identcontrol import IdentControl
 
+
 '''
 A dictionary that acts kinda like a class
 This wizardry is from
@@ -37,7 +38,7 @@ class CommandBot():
     def __init__(self, config, module_name='core', authmodule=None, ircmodule=None, identmodule=None):
         '''
         Create a new ircbot framework
-        config is a mapping of module_name => AttrDict, that has config for each module
+        config is a dict of module_name => AttrDict, that has config for each module
         module_name is the module name, and is also used to get the appropriate config dict
         authmodule - optional override of the authentication module the bot uses
         ircmodule -optional override of the irc wrapper the bot uses
@@ -45,11 +46,13 @@ class CommandBot():
         '''
 
         self.modules = {}
+        self.module_name = module_name
         #store all the config
         self.all_config = config
-        #get our config AttrDict out
         self.config = config[self.module_name]
-        self.config.module_name = self.module_name
+        #get our config from the dict
+        self.parse_config(self.our_config)
+
         self.log = logging.getLogger(self.config.log_name)
         self.log.setLevel(self.config.log_level)
 
@@ -63,8 +66,8 @@ class CommandBot():
         self.inq = Queue.PriorityQueue()
         self.outq = Queue.PriorityQueue()
         #Set up network class
-        net = Network(self.inq, self.outq, self.config.log_name)
-        #Despatch the thread
+        net = Network(self.inq, self.outq, self.all_config['modinternal_network'])
+        #Dispatch the thread
         self.log.debug('Dispatching network thread')
         thread = threading.Thread(target=net.loop)
         thread.start()
@@ -79,24 +82,24 @@ class CommandBot():
 
         #irc wrapper bootstrapped before auth and ident, as they both require it
         if not ircmodule:
-            self.irc = IRC_Wrapper(self, self.all_config)
+            self.irc = IRC_Wrapper(self, self.all_config['mod_irc'])
 
         else:
-            self.irc = ircmodule(self, self.all_config)
+            self.irc = ircmodule(self, self.all_config['mod_irc'])
 
         if not identmodule:
-            self.ident = IdentHost(self, self.all_config)#set up ident
-            self.identcontrol = IdentControl(self, self.all_config) # module for controlling it
+            self.ident = IdentHost(self, self.all_config['mod_ident'])#set up ident
+            self.identcontrol = IdentControl(self, self.all_config['mod_identcontrol']) # module for controlling it
 
         else:
-            self.ident = identmodule(self, self.all_config)
+            self.ident = identmodule(self, self.all_config['mod_ident'])
 
         #if no authmodule is passed through, use the default host/ident module
         if not authmodule:
-            self.auth = IdentAuth(self, self.all_config)
+            self.auth = IdentAuth(self, self.all_config['mod_authident'])
 
         else:
-            self.auth = authmodule(self, self.all_config)
+            self.auth = authmodule(self, self.all_config['mod_authident'])
 
         self.commands = [
                 self.command("quit", self.end, direct=True, auth_level=20),

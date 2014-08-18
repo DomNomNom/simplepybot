@@ -19,7 +19,9 @@ class Network(object):
     ircmsg = re.compile(r"(?P<prefix>:\S+ )?(?P<command>(\w+|\d{3}))(?P<params>( [^:]\S+)*)(?P<postfix> :.*)?")
 
     def __init__(self, inqueue, outqueue, config):
-        self.config = config[module_name]
+        self.config = config
+        self.config.connected = False
+        self.is_running = True
         #setup and configure socket
         self.socket = None
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -66,7 +68,7 @@ class Network(object):
                 try:
                     m_event = self.outq.get(False)
                     if m_event.type == nu.BOT_CONN:
-                        self.log.debug('Connection event!')
+                        self.log.debug(u'Connection event!')
                         self.connect(*m_event.data)
                     else:
                         pass
@@ -75,7 +77,7 @@ class Network(object):
             else:
                 self.poll_sockets()
         self.socket.close()#cleanup
-        self.log.info('network ending')
+        self.log.info(u'network ending')
 
     def poll_sockets(self):
         '''
@@ -87,7 +89,7 @@ class Network(object):
             for r in readable:
                 #read from r, placing the messages in the given queue
                 self.handle_input(r, self.inq)
-                writable.remove(r)#TODO will this fix error on linux
+                #writable.remove(r)#TODO will this fix error on linux
 
         if writable and not self.outq.empty():
             for w in writable:
@@ -321,7 +323,7 @@ class Network(object):
             else:
                 raise e
 
-        self.connected = True
+        self.config.connected = True
 
     def nick(self, nick):
         '''
