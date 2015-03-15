@@ -61,18 +61,9 @@ class Network(object):
     def loop(self):
         self.log.debug('Looping started')
         while self.is_running:
-            if not self.connected:
-                try:
-                    m_event = self.outq.get(False)
-                    if m_event.type == nu.BOT_CONN:
-                        self.log.debug('Connection event!')
-                        self.connect(*m_event.data)
-                    else:
-                        pass
-                except q.Empty as e:
-                    pass
-            else:
+            if self.is_connected:
                 self.poll_sockets()
+                
         self.log.info('network ending')
 
     def poll_sockets(self):
@@ -80,6 +71,20 @@ class Network(object):
         Uses select to get readable/writable sockets then calls
         read or write on them
         '''
+        #if we lost all our sockets but are marked as connected, move to unconnected state
+        #and notify bot we've just lost connection
+        if self.connected and (not self.inputs or not self.outputs):
+            self.log.error(u'No sockets left to read/write')
+            self.connected = False
+            #highest priority message that will get client to attempt to reconnect
+            self.inq.put(eu.error('No sockets left to read/write from', priority=1))
+            return # punch out of method
+        
+        #When not connected, simply loop, listening for a kill or reconnect event from
+        #the bot, other items simply get throw back on queue after their priority gets
+        #decreased (so we don't see the same item forever)
+        if not self.connected:
+            #TODO
         readable, writable, exceptional = select.select(self.inputs, self.outputs, self.inputs)
         if readable:
             for r in readable:
@@ -96,14 +101,8 @@ class Network(object):
                 #TODO can we get the error to log as well?
                 self.log.error(u'Exceptional socket {0}'.format(e.getpeername()))
                 self.inputs.remove(e)
-                self.outputs.remove(e)
-        
-        #if we lost all our sockets
-        if not self.inputs or not self.outputs:
-            self.log.error(u'No sockets left to read/write')
-            self.connected = False
-            #highest priority message that will get client to attempt to reconnect
-            self.inq.put(eu.error('No sockets left to read/write from', priority=1))
+                self.outputs.remove(e)        
+
 
     def handle_output(self, socket, outqueue):
         '''
